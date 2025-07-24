@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Central Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { text-align: center; color: #007bff; }
+        .client-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 30px; }
+        .client-card { background-color: #e9f5ff; border: 1px solid #cce5ff; border-radius: 8px; padding: 15px; }
+        .client-card.thermostat { background-color: #fff3cd; border-color: #ffeeba; }
+        .client-card.doorlock { background-color: #d4edda; border-color: #c3e6cb; }
+        .client-card h3 { margin-top: 0; color: #0056b3; }
+        .client-card p { margin: 5px 0; font-size: 0.95em; }
+        .client-card .status-indicator { font-weight: bold; }
+        .client-card .status-indicator.LOCKED { color: #dc3545; }
+        .client-card .status-indicator.UNLOCKED { color: #28a745; }
+        .last-update { font-size: 0.8em; color: #888; text-align: right; margin-top: 10px; }
+
+        /* Login Overlay Styles */
+        #login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .login-box {
+            background: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        .login-box input {
+            display: block;
+            width: 250px;
+            padding: 10px;
+            margin: 10px auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .login-box button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .login-box button:hover {
+            background-color: #0056b3;
+        }
+        .login-message {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+<div id="login-overlay">
+    <div class="login-box">
+        <h2>Admin Login</h2>
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button id="login-button">Login</button>
+        <p id="login-message" class="login-message"></p>
+    </div>
+</div>
+
+<div id="dashboard-content" style="display: none;">
+    <div class="container">
+        <h1>Smart Home Central Dashboard</h1>
+        <p style="text-align: center;">Last updated: <span id="lastUpdateTimestamp"></span></p>
+
+        <h2>Thermostat Status</h2>
+        <div id="thermostats-container" class="client-grid">
+            <p>Loading thermostat data...</p>
+        </div>
+
+        <h2>Doorlock Status</h2>
+        <div id="doorlocks-container" class="client-grid">
+            <p>Loading doorlock data...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE_URL = window.location.origin; // Or 'http://localhost:8080' if running on a different port
+
+    // TODO: replace with a full login procedure.
+    const ADMIN_USERNAME = "admin";
+    const ADMIN_PASSWORD = "superS3cr3t!";
+
+    const loginOverlay = document.getElementById('login-overlay');
+    const dashboardContent = document.getElementById('dashboard-content');
+    const loginButton = document.getElementById('login-button');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const loginMessage = document.getElementById('login-message');
+
+    loginButton.addEventListener('click', () => {
+        const enteredUsername = usernameInput.value;
+        const enteredPassword = passwordInput.value;
+
+        if (enteredUsername === ADMIN_USERNAME && enteredPassword === ADMIN_PASSWORD) {
+            loginOverlay.style.display = 'none'; // Hide login
+            dashboardContent.style.display = 'block'; // Show dashboard
+            loginMessage.textContent = ''; // Clear any previous error messages
+            startDashboardUpdates(); // Start fetching data
+            console.log("Logged in successfully!");
+        } else {
+            loginMessage.textContent = "Invalid username or password.";
+            console.warn("Login failed: Invalid credentials.");
+        }
+    });
+
+    // Dashboard functions (moved inside a function to be called after login)
+    let updateInterval; // To store the interval ID
+
+    function startDashboardUpdates() {
+        fetchClientStatus(); // Fetch initially
+        updateInterval = setInterval(fetchClientStatus, 5000); // Update every 5 seconds
+    }
+
+    async function fetchClientStatus() {
+        try {
+            const thermostatResponse = await fetch(`${API_BASE_URL}/api/status/thermostats`);
+            const thermostats = await thermostatResponse.json();
+            renderThermostats(thermostats);
+
+            const doorlockResponse = await fetch(`${API_BASE_URL}/api/status/doorlocks`);
+            const doorlocks = await doorlockResponse.json();
+            renderDoorlocks(doorlocks);
+
+            document.getElementById('lastUpdateTimestamp').textContent = new Date().toLocaleTimeString();
+
+        } catch (error) {
+            console.error("Failed to fetch client status:", error);
+            document.getElementById('thermostats-container').innerHTML = '<p style="color: red;">Error loading thermostat data. Is Spring Boot Central Client running?</p>';
+            document.getElementById('doorlocks-container').innerHTML = '<p style="color: red;">Error loading doorlock data. Is Spring Boot Central Client running?</p>';
+        }
+    }
+
+    function renderThermostats(thermostats) {
+        const container = document.getElementById('thermostats-container');
+        if (Object.keys(thermostats).length === 0) {
+            container.innerHTML = '<p>No thermostat data received yet. Make sure Java Thermostat clients are running.</p>';
+            return;
+        }
+        container.innerHTML = ''; // Clear previous content
+        for (const deviceId in thermostats) {
+            const data = thermostats[deviceId];
+            const card = document.createElement('div');
+            card.className = 'client-card thermostat';
+            card.innerHTML = `
+                <h3>Thermostat: ${data.device_id}</h3>
+                <p><strong>Current Temp:</strong> ${data.temperature}°C</p>
+                <p><strong>Target Temp:</strong> ${data.target_temperature}°C</p>
+                <p class="last-update">Last Update: ${new Date(data.timestamp).toLocaleTimeString()}</p>
+            `;
+            container.appendChild(card);
+        }
+    }
+
+    function renderDoorlocks(doorlocks) {
+        const container = document.getElementById('doorlocks-container');
+        if (Object.keys(doorlocks).length === 0) {
+            container.innerHTML = '<p>No doorlock data received yet. Make sure Java Doorlock clients are running.</p>';
+            return;
+        }
+        container.innerHTML = ''; // Clear previous content
+        for (const deviceId in doorlocks) {
+            const status = doorlocks[deviceId];
+            const card = document.createElement('div');
+            const statusClass = status === 'LOCKED' ? 'LOCKED' : 'UNLOCKED';
+            card.className = 'client-card doorlock';
+            card.innerHTML = `
+                <h3>Doorlock: ${deviceId}</h3>
+                <p><strong>Status:</strong> <span class="status-indicator ${statusClass}">${status}</span></p>
+                <p class="last-update">Last Update: ${new Date().toLocaleTimeString()}</p>
+            `;
+            container.appendChild(card);
+        }
+    }
+
+    // Debug function remains the same
+    /**
+     * Sends a command to a Smart Home device via the Central Application's API.
+     * Usage in browser console:
+     * sendCommand('thermostat.101.settemp', '23.0');
+     * sendCommand('doorlock.frontdoor.lock', 'true');
+     * sendCommand('doorlock.frontdoor.unlock', 'true');
+     * @param {string} commandType - The full command string, e.g., "thermostat.101.settemp" or "doorlock.frontdoor.lock"
+     * @param {string} value - The value associated with the command, e.g., "23.0" or "true"
+     * @param {string} sender - Optional. The sender's name (defaults to "WebConsoleDebugger")
+     */
+    async function sendCommand(commandType, value, sender = "WebConsoleDebugger") {
+        const commandPayload = {
+            sender: sender,
+            command: commandType,
+            value: String(value)
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/status/command`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(commandPayload)
+            });
+
+            if (response.ok) {
+                const message = await response.text();
+                console.log(`[SmartHome Debug] Command sent successfully: ${message}`);
+                fetchClientStatus(); // Trigger a refresh of the dashboard
+            } else {
+                const errorText = await response.text();
+                console.error(`[SmartHome Debug] Failed to send command (${response.status}): ${errorText}`);
+            }
+        } catch (error) {
+            console.error("[SmartHome Debug] Network error while sending command:", error);
+        }
+    }
+
+    //console.log("Login with username: admin, password: superS3cr3t!");
+</script>
+</body>
+</html>
